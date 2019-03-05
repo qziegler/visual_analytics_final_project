@@ -1,0 +1,236 @@
+
+<br> 
+<center><img src="http://i.imgur.com/sSaOozN.png" width="500"></center>
+
+# Visualizing Violent Crime in Washington, D.C.
+## Course: Visual Analytics for Policy and Management
+
+### Maria Zepeda Flores, Quinn Ziegler, and Joshua Jenkins 
+
+For this project, we are interested in exploring violent crime in Washington, D.C. Crime data on all reported crimes in Washington, D.C. in 2017 were obtained from the Metropolitan Police Department. Data on census tract characteristics, including median household income, unemployment rate, and vacancy rate, were obtained from the U.S. Census Bureau 2016 Community Survey 5-Year Estimates. To combine these datasets, census tract characteristics were merged to each reported crime record based on the census tract in which the crime occured.
+_____
+
+
+
+To begin, we import all of the libraries we will need for this tutorial.
+```{r}
+library(ggplot2)
+library(GGally)
+library(cluster)
+library(dplyr)
+library(broom)
+library(dotwhisker)
+library(ggrepel)
+```
+
+We then import the data and store it as a data frame.
+```{r}
+data_link = "https://github.com/qziegler/visual_analytics_final_project/raw/master/dc_crime_tract_demo.csv"
+crimedf <- read.csv(data_link, stringsAsFactors = FALSE)
+```
+
+Next, we observe the storage type of the variables in our dataset.
+```{r}
+str(crimedf)
+```
+
+Looking at a quick distribution of the census tract characteristics we're interested in, we see that the unemployment rate is in percentage form, but the vacancy rate is in decimal form. To ensure these fields are in the same units, we multiply our vacancy rate variable by 100.
+```{r}
+summary(crimedf$hh_med_income)
+
+summary(crimedf$unemp_rate)
+
+crimedf$vacancy_rate <- crimedf$vacancy_rate*100
+summary(crimedf$vacancy_rate)
+```
+
+The dataset we are working with now is a record of every reported in crime in Washington, D.C. However, we are interested in what violent crime looks like by census tract. First, we get a data frame that is unique by census tract, including each of the census tract characteristics we are interested in examnining further.
+```{r}
+aggVars <- c("CENSUS_TRACT", "total_pop", "hh_med_income", "unemp_rate", "vacancy_rate")
+aggdf <- crimedf[,aggVars]
+
+aggdf <- unique(aggdf)
+aggdf <- aggdf[!is.na(aggdf$CENSUS_TRACT),]
+```
+
+We are then interested in preparing a dataset of the violent crime rate in each census tract. We begin by looking at what offense types are present in our data.
+```{r}
+table(crimedf$OFFENSE, useNA = "always")
+```
+
+After determining which offense types constitute violent crime, we create a binary indicator indicating whether each record is a violent crime or not. We then aggregate the count of violent crimes by census tract and conduct a 1:1 merge of this dataset and the dataset with containing tract-level data on household median income, the unemployment rate, and the vacancy rate. As a final step, we construct the violent crime rate for each census tract, which is the number of violent crimes reported per 100,000 residents, and observe our data.
+```{r}
+violent_crimes <- c("ARSON", "ASSAULT W/DANGEROUS WEAPON", "HOMICIDE", "ROBBERY", "SEX ABUSE")
+
+crimedf$violent_crime <- ifelse(crimedf$OFFENSE %in% violent_crimes, 1, 0)
+
+census_vc  <- aggregate(violent_crime ~ CENSUS_TRACT, data = crimedf, sum)
+
+census_violent <- merge(aggdf, census_vc, by="CENSUS_TRACT")
+
+census_violent$vcrate <- (census_violent$violent_crime/census_violent$total_pop)*100000
+head(census_violent)
+```
+
+### Multivariate Plots
+
+To get a sense of what may be driving violent crime, we begin by preparing a correlation plot between our variables of interest. To make the data names appear nicer for our plot, we clean them up here and create a copy of our tract-level data frame with these new names.
+```{r}
+col_names <- c("Census.Tract", 
+               "Total.Population", 
+               "Median.Household.Income",
+               "Unemployment.Rate",
+               "Vacancy.Rate",
+               "Violent.Crime.Count",
+               "Violent.Crime.Rate")
+
+corrdf <- census_violent
+colnames(corrdf) <- col_names
+```
+
+With this cleaned-up data frame, we then prepare our correlation plot in earnest. We see which variables are positively or negatively correlated with the violent crime rate (as well as each other) and the strength of these relationships. Median household income and total population appear relatively strongly and negatively correlated with one another, whereas unemployment rate and vacancy rate have a weak negative relationship with the violent crime rate. Perhaps unsurprisingly, median household income and the unemployment rate have a very strong negative relationship with one another.
+```{r}
+corrp = ggcorr(corrdf[,-c(1,6)],
+                 hjust = 0.9,
+                 size=3,
+                 layout.exp=1,
+                 low = 'red',high = 'blue')
+
+corrp2 = corrp + guides(fill = guide_legend("Correlation:"))
+
+title = "Washington, DC: Census tract median household income and population is strongly \nand negatively correlated with the violent crime rate."
+caption = "Source: Washington, DC Metropolitan Police Department, 2016 American Community Survey 5-Year Estimates"
+
+corrp3 = corrp2 + labs(title = title,
+                       caption = caption)
+
+corrp4 = corrp3 + theme(plot.title = element_text(size = 11, face = "bold", hjust = 0),
+                        plot.caption = element_text(hjust = 0),
+                        legend.position = "right")
+
+corrp4
+
+```
+
+But how similar are census tracts to one another based on these characteristics, especially with respect to the outliers we identified in the box plot above. To do this we begin by clustering the census tracts based on the characteristics in our correlation plot.
+```{r}
+set.seed(228715)
+
+corrdf_comp <- corrdf[complete.cases(corrdf),]
+result <- kmeans(corrdf_comp[,-c(1,6)], centers = 3)
+corrdf_comp$Cluster <- result$cluster
+```
+
+We then calculate the Euclidean-distance among census tracts, based on these tract-level characteristics, using a multi-dimensional scaling approach. Our resulting data frame provides an x and y coordinate for each census tract based on its relative distance to all other census tracts in our dataset.
+```{r}
+tmpdf <- corrdf_comp[,-c(6,9)]
+distanceAmong <- dist(tmpdf[,-1])
+result <- cmdscale(distanceAmong, eig = TRUE, k = 2)
+
+dim1 <- result$points[,1]
+dim2 <- result$points[,2]
+
+coordinates <- data.frame(dim1, dim2, 
+                          census_tract = corrdf_comp$Census.Tract, 
+                          cluster = corrdf_comp$Cluster,
+                          vc_rate = corrdf_comp$Violent.Crime.Rate)
+```
+
+Before constructing our plot, we store our outliers in a list for labeling.
+```{r}
+outliers <- c("5800","7406", "7803", "7804", "8803", "9603", "10700")
+```
+
+To visualize how similar or different these census tracts are, we then plot their calculated coordinates and color their position by which cluster they belong to. We also label each of our outliers to see how similar or different they are from census tracts with violent crime rates that are not as extreme. From our plot, we see that our outliers (tracts with exceptionally high violent crime rates) are generally similar to other tracts in the Washington, D.C.
+```{r}
+base = ggplot(coordinates, aes(x = dim1, y = dim2, color = factor(cluster))) +
+          scale_color_manual(values = c("deepskyblue3","grey30","darkorange3"), 
+                             name = "Census Tract Cluster")
+  
+clust1 = base + geom_point() + geom_text_repel(aes(label=ifelse(census_tract %in% outliers,
+                                                                census_tract,"")), 
+                                               size = 4, show.legend = FALSE)
+
+title = "Washington, DC: Census tracts with exceptionally high violent crime rates are not that \ndifferent from other tracts based on income, employment, and unit vacancy"
+caption = "Source: Washington, DC Metropolitan Police Department, 2016 American Community Survey 5-Year Estimates"
+
+clust2 = clust1 + labs(title = title,
+                       caption = caption)
+
+clust3 = clust2 + theme(panel.background = element_rect(fill = "white", color = "grey50"),
+                        axis.title = element_blank(),
+                        axis.text = element_blank(),
+                        axis.ticks = element_blank(),
+                        plot.title = element_text(size = 11, face = "bold"),
+                        legend.title = element_text(size = 9),
+                        legend.position = "bottom",
+                        plot.caption = element_text(hjust = 0))
+
+clust3
+```
+
+But we're still curious as to what tract-level characteristics, if any, may be a good predictor of violent crime. To do this we want to perform a regression analysis. We're interested in comparing coefficient estimates and making interpretation of these estimates a bit easier, so we log-transform each variable in our simple model. However, to ensure that our data doesn't give us any issues when trying to run our analysis, we create a copy to our data frame, drop any tracts with missing data, and replace any values equal to 0 to now be equal to 0.01 to allow for the log transformation.
+```{r}
+regdf <- census_violent[complete.cases(census_violent),]
+regdf <- apply(regdf, 2, function(x) ifelse(x==0,0.01,x))
+regdf <- as.data.frame(regdf)
+```
+
+We prepare a regression model predicting the tract violent crime rate based on the tract total population, household median income, and vacancy rate and output a summary of our results.
+```{r}
+modelA <- lm(log(vcrate) ~ log(total_pop) + log(hh_med_income) + log(vacancy_rate), 
+              data = regdf)
+
+summary(modelA)
+```
+
+We then store these results in a table for our use later.
+```{r}
+modelA_t <- tidy(modelA) %>% mutate(model = "No Employment Control")
+```
+
+We prepare a second regression model, this time adding a control for the unemployment rate, and output a summary of these results.  
+```{r}
+modelB <- lm(log(vcrate) ~ log(total_pop) + log(hh_med_income) + log(unemp_rate) + log(vacancy_rate), 
+              data = regdf)
+
+summary(modelB)
+```
+
+Again, we store these results in a table, but this time, append it to the table with the model results from our model without the unemployment rate control.
+```{r}
+modelB_t <- tidy(modelB) %>% mutate(model = "Employment Control")
+allmodels <- rbind(modelB_t, modelA_t)
+```
+
+We'd like to see how the addition of the unemployment rate control affected the coefficient estimates on the other variables in the model. We see that without controlling for the unemployment rate, household median income was the lone strong predictor of violent crime in our model. However, by controlling for unemployment rate, we see that the effect of median household income is effectively eliminated and that the unemployment rate becomes a strong predictor of violent crime. This is consistent with what we saw in the correlation plot, where household median income and the unemployment rate were strongly correlated. This could suggest that unemployment rate is perhaps a strong driver of violent crime and the effect of household median income by itself is largely driven by the level of unemployment in the tract.
+```{r}
+plot1 = dwplot(allmodels) + 
+            geom_vline(xintercept = 0, 
+               colour = "grey60", 
+               linetype = 2) +
+            scale_colour_grey(start = .1, end = .5, name="Model") + theme_bw()
+
+title = "Controlling for unemployment rate substantially reduces the magnitude \nof the negative effect of household income on the violent crime rate."
+caption = "Source: Washington, DC Metropolitan Police Department, 2016 American Community Survey 5-Year Estimates"
+
+plot2 = plot1 + labs(title = title,
+                     x = "% Change in Violent Crime Rate",
+                     y = "Census Tract Characteristic",
+                     caption = caption)
+
+plot3 = plot2 + scale_y_discrete(labels = c("Vacancy Rate",
+                                            "Unemployment Rate",
+                                            "Median Household Income",
+                                            "Total Population")) +
+                scale_x_continuous(breaks = c(-2,-1,0,1,2), limits = c(-2,2))
+
+plot4 = plot3 + theme(panel.grid.major.y = element_blank(),
+                      plot.title = element_text(size = 11, face = "bold", hjust = 0.5),
+                      axis.title = element_text(size = 9),
+                      plot.caption = element_text(hjust = 0.5),
+                      legend.position = "bottom")
+
+plot4
+```
+
