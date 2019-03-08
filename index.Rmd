@@ -72,6 +72,124 @@ census_violent$vcrate <- (census_violent$violent_crime/census_violent$total_pop)
 head(census_violent)
 ```
 
+
+
+
+
+### Univariate Plot
+```{r}
+bp = boxplot(census_violent$vcrate,horizontal = T,ylim=c(0,16000))
+```
+
+```{r}
+bp$out
+census_violent <- census_violent[census_violent$vcrate < 15000,]
+outliers <- census_violent$CENSUS_TRACT[census_violent$vcrate %in% bp$out]
+outliers
+```
+
+```{r}
+boxVC = ggplot(census_violent, aes(y=vcrate, z="Test"))
+
+boxVC = boxVC + geom_boxplot() + coord_flip()
+
+box_title = "Washington, DC: In 2017, seven census tracts had an exceptionally high violent crime rate."
+box_caption = "Source: Washington, DC Metropolitan Police Department \n*The Census tract representing the National Mall is excluded from this plot"
+
+boxVC1 = boxVC + labs(title = box_title,
+                      y = "Annual Violent Crime Rate (Crimes per 100,000 residents)",
+                      caption = box_caption )
+
+boxVC2 = boxVC1 + theme(panel.background = element_rect(fill = "white", color = "grey50"),
+                        axis.title.x = element_text(size = 9, vjust = -1),
+                        axis.text.y = element_blank(),
+                        axis.ticks.y = element_blank(),
+                        plot.title = element_text(size = 11, face = "bold"),
+                        plot.caption = element_text(hjust = 0, vjust = -1))
+
+
+box_label = "Outliers are Census Tracts 5800, 7406, 7803, \n7804, 8803, 9603, and 10700"
+boxVC3 = boxVC2 + annotate("text", x = -0.1, y = 2600,
+                           label = box_label, 
+                           size = 3) +
+                  theme(axis.title.y = element_blank())
+
+boxVC3
+```
+
+
+
+
+
+### Bivariate Plot
+Let's zoom in on the violent crimes happening in those seven census tract outliers. 
+
+Here, we'll have to tell R what we consider to be violent crimes and to sort them by census tract.
+
+The table we created earlier shows them for all of the census tracts, but we're only interested in the outliers from our earlier graph. 
+
+```{r, warning=FALSE, message=FALSE}
+outliersdf = crimedf[(crimedf$CENSUS_TRACT) %in% outliers & (crimedf$violent_crime == 1),]
+```
+
+```{r}
+CrimeType=table(outliersdf$CENSUS_TRACT, outliersdf$OFFENSE) %>%
+         prop.table(margin = 2) %>%
+         "*"(100) %>%
+         round(3)
+
+df.T=as.data.frame(CrimeType)
+names(df.T)=c('CensusTract','Offense','Percent')
+head(df.T)
+```
+
+Let's map this out now
+
+
+Looks like it has a good start, but would take up too much ink. 
+Let's try this again.
+
+
+Almost there!
+Let's adjust the labeling to make this a fully developed heat map.
+
+```{r}
+base  = ggplot(df.T, aes(x = CensusTract, y = Offense, fill = Percent))
+
+heat1 = base + geom_tile()
+
+heat2 = heat1 + scale_fill_gradient(low = "white", high = "black", name = "Share of Crime \nCommitted in Tract")
+
+heat3 = heat2 + theme_classic()
+
+heat4 = heat3 + theme(axis.text.x = element_text(angle = 0, vjust = 0.6), 
+                      legend.position="right", 
+                      legend.direction="vertical",
+                      legend.key.width=unit(1, "cm"),
+                      legend.key.height=unit(1, "cm")) 
+
+heattitle = "Amongst census tracts with the highest rates of violent crime,\nin which tracts do these crimes most often occur?"
+heatsource = "Source: Washington, DC Metropolitan Police Department"
+
+heat5 = heat4 + labs(title = heattitle, 
+                     y="Type of Violent Crime", 
+                     x="Census Tract", 
+                     caption= "Source: Washington, DC Metropolitan Police Department") 
+
+heat6 = heat5 + theme(plot.title = element_text(face="bold", size=11), 
+                      plot.subtitle = element_text(size = 14, hjust = 1), 
+                      plot.caption = element_text(hjust = 0, vjust = -1),
+                      axis.title.y = element_blank(),
+                      axis.title.x = element_text(size = 9, vjust = -1),
+                      legend.title = element_text(size = 9))
+
+heat6
+```
+
+
+
+
+
 ### Multivariate Plots
 
 To get a sense of what may be driving violent crime, we begin by preparing a correlation plot between our variables of interest. To make the data names appear nicer for our plot, we clean them up here and create a copy of our tract-level data frame with these new names.
