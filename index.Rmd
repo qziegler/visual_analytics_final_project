@@ -21,6 +21,14 @@ library(dplyr)
 library(broom)
 library(dotwhisker)
 library(ggrepel)
+library(tmap)
+library(tmaptools)
+library(rmapshaper)
+library(RColorBrewer)
+library(classInt)
+library(raster)
+library(rgdal)
+library(utils)
 ```
 
 We then import the data and store it as a data frame.
@@ -184,6 +192,76 @@ heat6 = heat5 + theme(plot.title = element_text(face="bold", size=11),
                       legend.title = element_text(size = 9))
 
 heat6
+```
+
+
+
+
+
+### Map
+
+```{r}
+zipDC = "https://github.com/qziegler/visual_analytics_final_project/raw/master/2017_DCShapeFiles/tl_2017_11_tract.zip"
+```
+
+```{r}
+temp=tempfile()
+download.file(zipDC, temp)
+unzip(temp)
+```
+
+```{r}
+zipWater = "https://github.com/qziegler/visual_analytics_final_project/raw/master/2017_DCShapeFiles/tl_2017_11001_areawater.zip"
+```
+
+```{r}
+temp=tempfile()
+download.file(zipWater, temp)
+unzip(temp)
+```
+
+```{r}
+(maps=list.files(pattern = 'shp'))
+```
+
+```{r}
+DCtractMap <- readOGR("tl_2017_11_tract.shp", stringsAsFactors = FALSE)
+DCwaterMap <- readOGR("tl_2017_11001_areawater.shp", stringsAsFactors = FALSE)
+```
+
+```{r}
+names(DCtractMap)
+DCtractMap$TRACTCE <- as.numeric(DCtractMap$TRACTCE)
+```
+
+```{r}
+tractchars <- merge(DCtractMap, census_violent, by.x = "TRACTCE", by.y = "CENSUS_TRACT", all.x = F, all.y = T)
+```
+
+```{r}
+base = tm_shape(DCtractMap) + tm_polygons(col = "grey30")
+
+layer1 = base +  tm_shape(tractchars) + 
+                 tm_polygons("vcrate", style="quantile",n=9,
+                            title="Violent Crime Rate", # title of legend
+                            palette="Reds")
+
+layer2 = layer1 + tm_shape(DCwaterMap) + tm_polygons(col="steelblue")
+
+fullMap = layer2 + tm_compass(position = c('left','TOP'),type = 'arrow') +
+                   tm_scale_bar(position=c("RIGHT", "BOTTOM"),width = 0.2)
+
+fullMap = fullMap +  tm_layout(main.title = "Washington, D.C. 2017: Violent Crime Rate by Census Tract",
+                     main.title.position = 'left',
+                     main.title.size = 1,
+                     main.title.fontface = "bold",
+                     legend.position = c('RIGHT','center'),
+                     legend.text.size = 0.8,
+                     legend.title.size = 0.8,
+                     inner.margins=c(0.01,0.3,0.01,0.3)) 
+
+
+fullMap
 ```
 
 
