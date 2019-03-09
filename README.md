@@ -1,4 +1,4 @@
-# Final Project
+# Final Project: Visualizing Violent Crime in Washington, D.C.
 ## Visual Analytics for Policy and Management
 
 ## By: Quinn Ziegler, Maria Zepedes Flores, and Joshua Jenkins
