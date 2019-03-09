@@ -8,12 +8,12 @@
 ### Maria Zepeda Flores, Quinn Ziegler, and Joshua Jenkins 
 
 For this project, we are interested in exploring violent crime in Washington, D.C. Crime data on all reported crimes in Washington, D.C. in 2017 were obtained from the Metropolitan Police Department. Data on census tract characteristics, including median household income, unemployment rate, and vacancy rate, were obtained from the U.S. Census Bureau 2016 Community Survey 5-Year Estimates. To combine these datasets, census tract characteristics were merged to each reported crime record based on the census tract in which the crime occured.
-_____
+
 
 
 
 To begin, we import all of the libraries we will need for this tutorial.
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(ggplot2)
 library(GGally)
 library(cluster)
@@ -85,17 +85,30 @@ head(census_violent)
 
 
 ### Univariate Plot
+
+Let's start by taking a look at the distribution of violent crime rate among census tracts in Washington, D.C. We see that there are several outliers and one extreme outlier! What is going on here?
 ```{r}
 bp = boxplot(census_violent$vcrate,horizontal = T,ylim=c(0,16000))
 ```
 
+Here we get a list of the outlier violent crime rates. Most outliers have a violent crime rate between 2,000-3,000, but one has a violent crime rate over 15,000.
 ```{r}
 bp$out
+```
+
+We see the extreme outlier is census tract 6202, which represents the National Mall. There are relatively few violent crimes there (only 10), but because very few people live in the area, the violent crime rate explodes.
+```{r}
+print(census_violent[(census_violent$vcrate > 15000), c("CENSUS_TRACT", "violent_crime", "total_pop", "vcrate")])
+```
+
+The National Mall is a unique place in Washington, D.C. and unlike any other census tract so let's exclude it from our analysis of violent crime and define outliers as the other tracts identified from our initial boxplot.
+```{r}
 census_violent <- census_violent[census_violent$vcrate < 15000,]
 outliers <- census_violent$CENSUS_TRACT[census_violent$vcrate %in% bp$out]
 outliers
 ```
 
+However, the initial boxplot could use a little cleaning up. Below, we reproduce our boxplot, but using our new dataset excluding the National Mall and add labels identifying which tracts make up our group of outliers. We see that there are seven tracts that fall above the distribution given by the boxplot.
 ```{r}
 boxVC = ggplot(census_violent, aes(y=vcrate, z="Test"))
 
@@ -130,16 +143,13 @@ boxVC3
 
 
 ### Bivariate Plot
-Let's zoom in on the violent crimes happening in those seven census tract outliers. 
 
-Here, we'll have to tell R what we consider to be violent crimes and to sort them by census tract.
-
-The table we created earlier shows them for all of the census tracts, but we're only interested in the outliers from our earlier graph. 
-
+Next, let's zoom in on the violent crimes happening in those seven census tract outliers. First, let's create a data frame of all violent crimes occuring in our census tract outlier group.
 ```{r, warning=FALSE, message=FALSE}
 outliersdf = crimedf[(crimedf$CENSUS_TRACT) %in% outliers & (crimedf$violent_crime == 1),]
 ```
 
+We then want to look amongst our outlier group, which crimes are more or less common in which tracts. We start by producing a two-way frequency table by census tract and offense type. We're interested in the relative shares of each crime split by census tract, so we produce a table reporting the shares of each crime broken down by column (in this case, census tract). We then take a look at our table, now saved as a data frame.
 ```{r}
 CrimeType=table(outliersdf$CENSUS_TRACT, outliersdf$OFFENSE) %>%
          prop.table(margin = 2) %>%
@@ -151,16 +161,7 @@ names(df.T)=c('CensusTract','Offense','Percent')
 head(df.T)
 ```
 
-Let's map this out now
-
-
-Looks like it has a good start, but would take up too much ink. 
-Let's try this again.
-
-
-Almost there!
-Let's adjust the labeling to make this a fully developed heat map.
-
+Let's visualize this table by making a heatmap. We can see that among tracts with extreme violent crime rates, two tracts in particular account for a large share of homicides, while robberies, for example, are more equally distributed across these tracts.
 ```{r}
 base  = ggplot(df.T, aes(x = CensusTract, y = Offense, fill = Percent))
 
@@ -200,65 +201,68 @@ heat6
 
 ### Map
 
+But where exactly are these outlier tracts geographically? We'll need a map to answer this question. We start by unzipping a shape file from the U.S. Census Bureau giving up a census tract map of Washington, D.C.
 ```{r}
 zipDC = "https://github.com/qziegler/visual_analytics_final_project/raw/master/2017_DCShapeFiles/tl_2017_11_tract.zip"
 ```
 
-```{r}
+```{r, warning=FALSE}
 temp=tempfile()
 download.file(zipDC, temp)
 unzip(temp)
 ```
 
+We also have a shape file giving us the water in and around Washington, D.C., which will provide as a nice geographic orientation and make our map look a little nicer. Let's unzip the needed files now as well.
 ```{r}
 zipWater = "https://github.com/qziegler/visual_analytics_final_project/raw/master/2017_DCShapeFiles/tl_2017_11001_areawater.zip"
 ```
 
-```{r}
+```{r, warning=FALSE}
 temp=tempfile()
 download.file(zipWater, temp)
 unzip(temp)
 ```
 
+Let's make sure our shape files are available...
 ```{r}
 (maps=list.files(pattern = 'shp'))
 ```
 
-```{r}
+...and then import them into R.
+```{r, warning=FALSE}
 DCtractMap <- readOGR("tl_2017_11_tract.shp", stringsAsFactors = FALSE)
 DCwaterMap <- readOGR("tl_2017_11001_areawater.shp", stringsAsFactors = FALSE)
 ```
 
+We take a quick look at what fields are available to us.
 ```{r}
 names(DCtractMap)
 DCtractMap$TRACTCE <- as.numeric(DCtractMap$TRACTCE)
 ```
 
+We're interested in seeing where our outlier tracts are located geographically, so let's create a layer for our map of just our outlier census tracts.
 ```{r}
-tractchars <- merge(DCtractMap, census_violent, by.x = "TRACTCE", by.y = "CENSUS_TRACT", all.x = F, all.y = T)
+tractoutliers <- DCtractMap[DCtractMap$TRACTCE %in% outliers,]
 ```
 
+Now we can produce our map. We start with a map of all census tracts in Washington, D.C. as our base map and add the layer of only census tract outliers on top, coloring them red so they stand out. Next, we add our water later for aesthetics, as well as a compass and scale bar.
 ```{r}
 base = tm_shape(DCtractMap) + tm_polygons(col = "grey30")
 
-layer1 = base +  tm_shape(tractchars) + 
-                 tm_polygons("vcrate", style="quantile",n=9,
-                            title="Violent Crime Rate", # title of legend
-                            palette="Reds")
+layer1 = base +  tm_shape(tractoutliers) + tm_polygons(col = "red")
 
 layer2 = layer1 + tm_shape(DCwaterMap) + tm_polygons(col="steelblue")
 
 fullMap = layer2 + tm_compass(position = c('left','TOP'),type = 'arrow') +
-                   tm_scale_bar(position=c("RIGHT", "BOTTOM"),width = 0.2)
+                   tm_scale_bar(position=c("left", "BOTTOM"),width = 0.2)
 
-fullMap = fullMap +  tm_layout(main.title = "Washington, D.C. 2017: Violent Crime Rate by Census Tract",
+maptitle = "Washington, D.C. 2017: Census Tracts with Violent \nCrime Rates > 2,000 per 100,000 Residents"
+
+fullMap = fullMap +  tm_layout(main.title = maptitle,
                      main.title.position = 'left',
                      main.title.size = 1,
                      main.title.fontface = "bold",
-                     legend.position = c('RIGHT','center'),
-                     legend.text.size = 0.8,
-                     legend.title.size = 0.8,
-                     inner.margins=c(0.01,0.3,0.01,0.3)) 
+                     inner.margins=c(0.01,0.3,0.01,0.01)) 
 
 
 fullMap
@@ -332,10 +336,6 @@ coordinates <- data.frame(dim1, dim2,
                           vc_rate = corrdf_comp$Violent.Crime.Rate)
 ```
 
-Before constructing our plot, we store our outliers in a list for labeling.
-```{r}
-outliers <- c("5800","7406", "7803", "7804", "8803", "9603", "10700")
-```
 
 To visualize how similar or different these census tracts are, we then plot their calculated coordinates and color their position by which cluster they belong to. We also label each of our outliers to see how similar or different they are from census tracts with violent crime rates that are not as extreme. From our plot, we see that our outliers (tracts with exceptionally high violent crime rates) are generally similar to other tracts in the Washington, D.C.
 ```{r}
