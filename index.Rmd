@@ -13,8 +13,6 @@ For this project, we are interested in exploring violent crime in Washington, D.
 
 
 ### Introduction
-<br>
-
 To begin, we import all of the libraries we will need for this tutorial.
 ```{r, warning=FALSE, message=FALSE}
 library(ggplot2)
@@ -85,14 +83,12 @@ census_violent <- merge(aggdf, census_vc, by="CENSUS_TRACT")
 census_violent$vcrate <- (census_violent$violent_crime/census_violent$total_pop)*100000
 head(census_violent)
 ```
-
+<br>
 
 
 
 
 ### Univariate Plot
-<br>
-
 Let's start by taking a look at the distribution of violent crime rate among census tracts in Washington, D.C. We see that there are several outliers and one extreme outlier! What is going on here?
 ```{r}
 bp = boxplot(census_violent$vcrate,horizontal = T,ylim=c(0,16000))
@@ -157,8 +153,6 @@ boxVC3
 
 
 ### Bivariate Plot
-<br>
-
 Next, let's zoom in on the violent crimes happening in those seven census tract outliers. First, let's create a data frame of all violent crimes occuring in our census tract outlier group.
 ```{r, warning=FALSE, message=FALSE}
 outliersdf = crimedf[(crimedf$CENSUS_TRACT) %in% outliers & (crimedf$violent_crime == 1),]
@@ -222,8 +216,6 @@ heat6
 
 
 ### Map
-<br>
-
 But where exactly are these outlier tracts geographically? We'll need a map to answer this question. We start by unzipping a shape file from the U.S. Census Bureau giving up a census tract map of Washington, D.C.
 ```{r}
 zipDC = "https://github.com/qziegler/visual_analytics_final_project/raw/master/2017_DCShapeFiles/tl_2017_11_tract.zip"
@@ -304,8 +296,6 @@ fullMap
 
 
 ### Multivariate Plots
-<br>
-
 To get a sense of what may be driving violent crime, we begin by preparing a correlation plot between our variables of interest. To make the data names appear nicer for our plot, we clean them up here and create a copy of our tract-level data frame with these new names.
 ```{r}
 col_names <- c("Census.Tract", 
